@@ -4,7 +4,7 @@
 			It can be found here: https://spinningup.openai.com/en/latest/_images/math/e62a8971472597f4b014c2da064f636ffe365ba3.svg
 """
 
-#import gym
+import gym
 import time
 
 import numpy as np
@@ -31,20 +31,18 @@ class PPO:
 				None
 		"""
 		# Make sure the environment is compatible with our code
-		#assert(type(env.observation_space) == gym.spaces.Box)
-		#assert(type(env.action_space) == gym.spaces.Box)
+		assert(type(env.observation_space) == gym.spaces.Box)
+		assert(type(env.action_space) == gym.spaces.Box)
 
 		# Initialize hyperparameters for training with PPO
 		self._init_hyperparameters(hyperparameters)
 
 		# Extract environment information
-		#self.env = env pulls in the environment info (using our own data inputs)
-                self.obs_dim = 1 #only on item is being observed (position of the fingers)
-		#self.obs_dim = env.observation_space.shape[0] number of observations in the observation space
-                self.act_dim = 1 #only one action available in the actions space (increase or decrease motor feedback)
-		#self.act_dim = env.action_space.shape[0] number of actions available in the action space
+		self.env = env
+		self.obs_dim = env.observation_space.shape[0]
+		self.act_dim = env.action_space.shape[0]
 
-		# Initialize actor and critic networks
+		 # Initialize actor and critic networks
 		self.actor = policy_class(self.obs_dim, self.act_dim)                                                   # ALG STEP 1
 		self.critic = policy_class(self.obs_dim, 1)
 
@@ -185,14 +183,15 @@ class PPO:
 			ep_rews = [] # rewards collected per episode
 
 			# Reset the environment. sNote that obs is short for observation. 
-			#obs = self.env.reset() not using the environment
+			obs = self.env.reset()
+			obs = obs[0]
 			done = False
 
 			# Run an episode for a maximum of max_timesteps_per_episode timesteps
 			for ep_t in range(self.max_timesteps_per_episode):
 				# If render is specified, render the environment
-				#if self.render and (self.logger['i_so_far'] % self.render_every_i == 0) and len(batch_lens) == 0:
-				#	self.env.render()
+				if self.render and (self.logger['i_so_far'] % self.render_every_i == 0) and len(batch_lens) == 0:
+					self.env.render()
 
 				t += 1 # Increment timesteps ran this batch so far
 
@@ -202,7 +201,7 @@ class PPO:
 				# Calculate action and make a step in the env. 
 				# Note that rew is short for reward.
 				action, log_prob = self.get_action(obs)
-				#obs, rew, done, _ = self.env.step(action)
+				obs, rew, done, _, _ = self.env.step(action)
 
 				# Track recent reward, action, and action log probability
 				ep_rews.append(rew)
@@ -329,17 +328,17 @@ class PPO:
 		"""
 		# Initialize default values for hyperparameters
 		# Algorithm hyperparameters
-		self.timesteps_per_batch = 200                 # Number of timesteps to run per batch
-		self.max_timesteps_per_episode = 200           # Max number of timesteps per episode
+		self.timesteps_per_batch = 4800                 # Number of timesteps to run per batch
+		self.max_timesteps_per_episode = 1600           # Max number of timesteps per episode
 		self.n_updates_per_iteration = 5                # Number of times to update actor/critic per iteration
 		self.lr = 0.005                                 # Learning rate of actor optimizer
 		self.gamma = 0.95                               # Discount factor to be applied when calculating Rewards-To-Go
 		self.clip = 0.2                                 # Recommended 0.2, helps define the threshold to clip the ratio during SGA
 
 		# Miscellaneous parameters
-		#self.render = True                              # If we should render during rollout
-		#self.render_every_i = 10                        # Only render every n iterations
-		#self.save_freq = 10                             # How often we save in number of iterations
+		self.render = True                              # If we should render during rollout
+		self.render_every_i = 10                        # Only render every n iterations
+		self.save_freq = 10                             # How often we save in number of iterations
 		self.seed = None                                # Sets the seed of our program, used for reproducibility of results
 
 		# Change any default values to custom values for specified hyperparameters

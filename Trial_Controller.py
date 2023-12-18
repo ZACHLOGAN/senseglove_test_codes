@@ -31,7 +31,8 @@ class Trial_Controller:
         self.current_trial = [0, 0, 0]
         #variable for tracking trial length
         self.counter = 0
-
+	
+	#value is that 0 is vision, 1 is baseline only, 2 is RL learned
         self.feedback = Float64()
         self.feedback.data = 0.0
 
@@ -48,6 +49,15 @@ class Trial_Controller:
         self.logged.layout.dim[0].size = 1
         self.logged.layout.dim[1].size = 7
         self.logged.data = [0, 0, 0, 0, 0, 0, 0]
+        
+        #varible for transfering data for ppo system to use 
+        #data is ordered as [desired position, actual position]
+        self.train_data = Float64MultiArray()
+        self.train_data.layout = MultiArrayLayout()
+        self.train_data.layout.dim = [MultiArrayDimension(), MultiArrayDimension()]
+        self.train_data.layout.dim[0].size = 1
+        self.train_data.layout.dim[1].size = 2
+        self.train_data.data = [0, 0]
         
         #variable for saving and transfering current session state to RVIZ
         #data order is [session, desired_position, user_position]
@@ -72,6 +82,8 @@ class Trial_Controller:
         #publish current trial state
         self.trial_progress = rospy.Publisher("trial_progress", Float64, queue_size = 5)
 
+        #publisher for data needed for ppo system to store
+        self.ppo_publisher = rospy.Publisher("PPO_Pub", Float64MultiArray, queue_size = 5)
         
         #publish position and velocity ESP32 Command GEN and/or PPO
         self.esp32 = rospy.Publisher("ESP32_Data", FLoat64MultiArray(), queue_size = 5)
@@ -163,8 +175,10 @@ class Trial_Controller:
             
             #publish the velocity and error data
             self.esp32.publish(self.data_32)
-            #concatenate 
+            #concatenate data into one variable for publishing to data record
             self.logged.data = [self.current_trial[0], self.current_trial[1], self.current_trial[2], self.counter, self.position, self.velocity, self.error]
+            #concatenate data into one variable for publishing to RL system
+            self.train_data.data = [self.current_trial[2], self.position]
             
             #if a trial is active then publish data to respective topics
             if(self.session_index == 1):
@@ -175,6 +189,9 @@ class Trial_Controller:
             elif(self.session_index == 2):
                 self.session_state.publish(self.rviz_data)
                 self.record_data.publish(self.logged)
+                #if RL is active publish to the RL learn variable for memory storing
+                if (self.current_trial[0] == 2):
+                	self.ppo_publisher.publish(self.train_data)
                 self.counter = self.counter + self.DT
                 
             elif(self.session_index == 3):
@@ -182,7 +199,7 @@ class Trial_Controller:
                 self.record_data.publish(self.logged)
                 self.counter = self.counter + self.DT
 
-    def train(self, 
+    #def train(self, 
 
 def main():
     #initialize the ros node under name Manager
@@ -193,6 +210,7 @@ def main():
 
     #create or load participant data
     data = manager.pos_trial_generation()
+    #data = np.genfromtext("")
     
     #index for tracking overall trial progress, counts all session trials as time limits and recorded data is the same and is tracked in the data generation part
     i = 0
