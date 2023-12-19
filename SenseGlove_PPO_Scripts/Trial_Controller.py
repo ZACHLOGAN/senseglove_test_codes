@@ -32,6 +32,9 @@ class Trial_Controller:
         #variable for tracking trial length
         self.counter = 0
 	
+	#count number of data values collected from the system
+	self.data_index = 1.0
+	
 	#value is that 0 is vision, 1 is baseline only, 2 is RL learned
         self.feedback = Float64()
         self.feedback.data = 0.0
@@ -51,13 +54,13 @@ class Trial_Controller:
         self.logged.data = [0, 0, 0, 0, 0, 0, 0]
         
         #varible for transfering data for ppo system to use 
-        #data is ordered as [desired position, actual position]
+        #data is ordered as [data_index, desired_position, actual_position]
         self.train_data = Float64MultiArray()
         self.train_data.layout = MultiArrayLayout()
         self.train_data.layout.dim = [MultiArrayDimension(), MultiArrayDimension()]
         self.train_data.layout.dim[0].size = 1
         self.train_data.layout.dim[1].size = 2
-        self.train_data.data = [0, 0]
+        self.train_data.data = [0, 0, 0]
         
         #variable for saving and transfering current session state to RVIZ
         #data order is [session, desired_position, user_position]
@@ -76,6 +79,10 @@ class Trial_Controller:
         self.data_32.layout.dim[0].stride = 4
         self.data_32.data = [0, 0, 0, 0]
         
+        
+        #publisher for running the PPO Data
+        self.Run_PPO = rospy.Publisher("Run_PPO", Int16, queue_size = 5)
+        
         #publisher for all desired data to be set for recording script 
         self.record_data = rospy.Publisher("Data_Record", Float64MultiArray, queue_size = 5)		
 
@@ -83,75 +90,16 @@ class Trial_Controller:
         self.trial_progress = rospy.Publisher("trial_progress", Float64, queue_size = 5)
 
         #publisher for data needed for ppo system to store
-        self.ppo_publisher = rospy.Publisher("PPO_Pub", Float64MultiArray, queue_size = 5)
+        self.ppo_publisher = rospy.Publisher("Recall_Data", Float64MultiArray, queue_size = 5)
         
         #publish position and velocity ESP32 Command GEN and/or PPO
-        self.esp32 = rospy.Publisher("ESP32_Data", FLoat64MultiArray(), queue_size = 5)
+        self.esp32 = rospy.Publisher("ESP32_Data", FLoat64MultiArray, queue_size = 5)
 
         #publish current session state to RVIZ
         self.session_state = rospy.Publisher("RVIZ_Session", Float64MultiArray, queue_size = 5)
         
         #subsrciber for user fingertip position
         self.user_pos = rospy.Subscriber("finger_position", Float64MultiArray, self.data_logger)
-
-        
-    #function for generating particpant trial setup
-    def pos_trial_generation(self):
-        #angular fingertip positions to be tested (0 is fully open, 180 is fully closed)
-        positions = [0, 45, 90, 135, 180]
-        repeats_base = 10
-        repeats_adapt = 20
-        repeats_post = 10
-        #feedback types, 0 = vision only, 1 = vision and baseline policy, 2 = vision and updating policy
-        feedback_method = [0, 1, 2]
-        practice_trials = 10
-        baseline_trials = len(positions)*repeats_base#number of baseline session trials
-        adaptation_trials = len(positions)*repeats_adapt #number of motor adaptation session trials
-        post_trials = len(positions)*repeats_post #number of post-adaptation session trials
-
-        c = random.sample(feedback_method, 1)
-        base = []
-        adapt = []
-        post = []
-        trials = []
-        k = 1
-        j = 0
-        while (j < len(positions)-1):
-            k = 1
-            while (k <= repeats_base):
-                tips = [c[0], 1, positions[j]]
-                base.append(tips)
-                k = k + 1
-            k = 1
-            while(k <= repeats_adapt):
-                tips = [c[0], 2, positions[j]]
-                adapt.append(tips)
-                k = k + 1
-            k = 1
-            while(k <= repeats_post):
-                tips = [c[0], 3, positions[j]]
-                post.append(tips)
-                k = k + 1
-            j = j + 1
-        random.shuffle(base)
-        random.shuffle(adapt)
-        random.shuffle(post)
-
-        k = 0
-        while (k<= len(base)-1):
-            trials.append(base[k])
-            k  = k + 1
-
-        k = 0
-        while (k<= len(adapt)-1):
-            trials.append(adapt[k])
-            k  = k + 1
-
-        k = 0
-        while (k<= len(post)-1):
-            trials.append(post[k])
-            k  = k + 1
-        return trials    
 
     #obtain senseglove position data
     def data_logger(self, data):
@@ -178,7 +126,7 @@ class Trial_Controller:
             #concatenate data into one variable for publishing to data record
             self.logged.data = [self.current_trial[0], self.current_trial[1], self.current_trial[2], self.counter, self.position, self.velocity, self.error]
             #concatenate data into one variable for publishing to RL system
-            self.train_data.data = [self.current_trial[2], self.position]
+            self.train_data.data = [self.data_index, self.current_trial[2], self.position]
             
             #if a trial is active then publish data to respective topics
             if(self.session_index == 1):
@@ -192,6 +140,7 @@ class Trial_Controller:
                 #if RL is active publish to the RL learn variable for memory storing
                 if (self.current_trial[0] == 2):
                 	self.ppo_publisher.publish(self.train_data)
+                	self.data_index = self.data_index + 1
                 self.counter = self.counter + self.DT
                 
             elif(self.session_index == 3):
