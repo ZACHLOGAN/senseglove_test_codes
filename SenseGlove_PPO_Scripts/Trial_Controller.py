@@ -38,7 +38,12 @@ class Trial_Controller:
 	#value is that 0 is vision, 1 is baseline only, 2 is RL learned
         self.feedback = Float64()
         self.feedback.data = 0.0
-
+	
+	#running ppo variable
+	self.tell_ppo = Int16()
+	self.tell_ppo.data = 0
+	self.is_ppo_done = 0
+	
         self.position = 0
         self.prior_position = 0
         self.velocity = 0
@@ -71,7 +76,8 @@ class Trial_Controller:
         self.rviz_data.layout.dim[0].stride = 3
         self.rviz_data.data = [0, 0, 0]
 
-        #variable for saving position and velocity data to be sent to esp32 and/or ppo plus feedback state, plus error
+        #variable for saving position and velocity data to be sent to esp32
+        #data order is [user position, user velocity, session, feedback type]
         self.data_32 = Float64MultiArray()
         self.data_32.layout = MultiArrayLayout()
         self.data_32.layout.dim = [MultiArrayDimension()]
@@ -100,15 +106,23 @@ class Trial_Controller:
         
         #subsrciber for user fingertip position
         self.user_pos = rospy.Subscriber("finger_position", Float64MultiArray, self.data_logger)
+        
+        #subscriber for checking if the ppo is done training
+        self.check_done = rospy.Subscriber("Done_Check", Int16, self.update_done_check)
 
     #obtain senseglove position data
     def data_logger(self, data):
         self.position = data.data
+        
+    #subscriber callback to check if ppo is done
+    def update_done_check(self, data):
+    	self.is_ppo_done = data.data
+    	
     #compute the direction of user motion and their error
     def compute_velocity_error(self):
         self.velocity = (self.position-self.prior_position)/(self.DT)
         self.error = self.position - self.current_trial[2]
-        self.data_32.data = [self.velocity, self.error]
+        self.data_32.data = [self.position, self.velocity]
     
     #function for collecting, concatenating, and publishing experiment data to final record topic
     def data_record(self):
@@ -147,8 +161,6 @@ class Trial_Controller:
                 self.session_state.publish(self.rviz_data)
                 self.record_data.publish(self.logged)
                 self.counter = self.counter + self.DT
-
-    #def train(self, 
 
 def main():
     #initialize the ros node under name Manager
@@ -196,6 +208,14 @@ def main():
 
             manager.trial.data = 0
             manager.counter = 0
+            manager.is_ppo_done = 0
+            if (manager.current_trial[0] == 2 and (manager.session_index == 2 or manager.session_index == 3)):
+            	manager.Run_PPO.publish(manager.tell_ppo)
+            	while (manager.is_ppo_done == 0)
+            		a = 20
+            		if (manager.is_ppo_done == 1):
+            			break;
+            
             i = i + 1
             
     except rospy.ROSInterruptException:
@@ -206,5 +226,3 @@ def main():
 #run the ros node
 if __name__ == '__main__':
     main()
-            
-            

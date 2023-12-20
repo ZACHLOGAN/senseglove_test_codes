@@ -9,18 +9,25 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.distributions import MultivariateNormal
+from network import FeedForwardNN
 
 class Sense_PPO:
 	"""
 	PPO class used to train our haptic feedback algorithm using SenseGlove Data. Will be directly called in Trial_Controller node.
 	"""
-	def __init__(self, policy_class, **hyperparameters)
+	def __init__(self, **hyperparameters)
 		#subscriber for recall the data collected during the trials
 		self.recall_data = rospy.Subscriber("Recall_Data", Float64MultiArray, self.store_data)
 		#subscriber for running the training algorithm
 		self.Run_PPO = rospy.Subscriber("Run_PPO", Int16, self.Agent)
 		#publisher for sending the updated neural network weights
 		self.network_updater = rospy.Publisher("PPO_Network", String, queue_size = 5)
+		#publisher to tell the main loop training is complete
+		self.done_check = rospy.Publisher("Done_Check", Int16, queue_size = 5)
+		
+		#flag for checking if ppo is done
+		self.done_flag = Int16()
+		self.done_flag.data = 0
 		
 		#initialize the variable for the storing the data
 		self.obsv_stored = []
@@ -32,9 +39,9 @@ class Sense_PPO:
 		self.obs_dim = 1
 		self.act_dim = 1
 
-		# Initialize actor and critic networks
-		self.actor = policy_class(self.obs_dim, self.act_dim) # ALG STEP 1
-		self.critic = policy_class(self.obs_dim, 1)
+		# Initialize actor and critic networks using premade network script in Pytorch
+		self.actor = FeedForwardNN(self.obs_dim, self.act_dim) # ALG STEP 1
+		self.critic = FeedForwardNN(self.obs_dim, 1)
 
 		# Initialize optimizers for actor and critic
 		self.actor_optim = Adam(self.actor.parameters(), lr=self.lr)
@@ -168,8 +175,6 @@ class Sense_PPO:
 	
 	def Agent(self, data):
 		#ppo training algorithm
-		
-		
 		while t_so_far < total_timesteps:                                                                       # ALG STEP 2
 			#create batches of data to train ppo on
 			batch_obs, batch_acts, batch_log_probs, batch_rtgs, batch_lens = self.generate_batches()                     # ALG STEP 3
@@ -232,6 +237,15 @@ class Sense_PPO:
 				# Log actor loss
 				self.logger['actor_losses'].append(actor_loss.detach())
 				
+		#extract state dictionary from actor model and convert to string
+		trained_state_dictionary = self.actor.state_dict()
+		trained_state_dictionary_str = str(trained_state_dictionary)
+		#publish trained model to string message for use in command evaluation of ESP32
+		self.network_updater.publish(trained_state_dictionary_str)
+		
+		#tell system that ppo is done
+		self.done_flag.data = 1
+		self.done_check.publish(self.done_flag)
 		
 
 	#computes the rewards to go of each timestep contained in the batch
@@ -342,3 +356,16 @@ class Sense_PPO:
 			# Set the seed 
 			torch.manual_seed(self.seed)
 			print(f"Successfully set seed to {self.seed}")
+
+#main loop for running the code as a ROS node		
+def main():
+	rospy.init_node("PPO_Training_Alg", log_level = rospy.INFO)
+	try:
+		train_my_algorithm = Sense_PPO()
+	except rospy.ROSInterruptException:
+		pass
+	rospy.spin()
+
+#code for launching the code
+if __name__=='__main__':
+	main()
