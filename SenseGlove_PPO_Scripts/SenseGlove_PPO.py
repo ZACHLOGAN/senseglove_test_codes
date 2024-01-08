@@ -149,7 +149,7 @@ class Sense_PPO:
 				# Calculate action and make a step in the env. 
 				# Note that rew is short for reward.
 				action, log_prob = self.get_action(obs)
-				obs, rew, done, _, _ = self.env.step(action)
+				obs, rew, done = self.SenseGloveStep(action)
 
 				# Track recent reward, action, and action log probability
 				ep_rews.append(rew)
